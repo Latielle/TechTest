@@ -13,6 +13,8 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -25,9 +27,31 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
 
+        final String HTML_A_TAG_PATTERN = "(?i)<a([^>]+)>(.+?)</a>";
+        final String HTML_A_HREF_TAG_PATTERN =
+                "\\s*(?i)href\\s*=\\s*(\"([^\"]*\")|'[^']*'|([^'\">\\s]+))";
+        final String HTML_DOMAIN_PATTERN = ".*\\://(?:www.)?([^\\/]+)";
+
         String urlPath = "https://www.bahn.de/p/view/index.shtml";
         String inputHTML = readFromInputStream(urlPath);
 
+
+        // --------------------Via Regex
+        List<String> tagsRegex = getRegexList(inputHTML, HTML_A_TAG_PATTERN);
+        List<String> linksRegex = tagsRegex.stream().filter(tag -> !getRegexList(tag, HTML_A_HREF_TAG_PATTERN).isEmpty()).map(tag -> getRegexList(tag, HTML_A_HREF_TAG_PATTERN).get(0)).collect(Collectors.toList());
+        List<String> domainsRegex = linksRegex.stream().filter(link -> !getRegexList(link, HTML_DOMAIN_PATTERN).isEmpty()).map(link -> getRegexList(link, HTML_DOMAIN_PATTERN).get(0).trim().replace("href=", "").replace("\"", "").split("\\?")[0]).collect(Collectors.toList());
+        List<String> domainsRegexUnique = domainsRegex.stream().distinct().collect(Collectors.toList());
+
+        int j = 1;
+        System.out.println("=========GETTING DOMAINS VIA REGEX=========");
+        for (String temp : domainsRegexUnique) {
+
+            System.out.println(temp.replace("http://", "").replace("https://", "").replace("www.", "") + " - " + j);
+            j++;
+        }
+
+
+        // ------------Via HTML-parser
         Document doc = Jsoup.parse(inputHTML);
         Elements links = doc.select("a[href]");
 
@@ -36,6 +60,7 @@ public class Main {
         // Printing all unique hosts
         List<String> hostsUnique = hosts.stream().distinct().collect(Collectors.toList());
         int i = 1;
+        System.out.println("=========GETTING DOMAINS VIA HTML-PARSER=========");
         for (String temp : hostsUnique) {
             if (temp != null) {
                 System.out.println(temp + " - " + i);
@@ -76,12 +101,31 @@ public class Main {
         for (Element link : links) {
             try {
                 URI uri = new URI(link.attr("href"));
-                hosts.add(uri.getHost());
+                String host = uri.getHost();
+                if (host != null)
+                    hosts.add(host.replace("www.", ""));
             } catch (URISyntaxException e) {
                 e.printStackTrace();
             }
         }
 
         return hosts;
+    }
+
+    /**
+     * Method get all string values satisfied to the template
+     *
+     * @param input - string value, pattern - Regex-pattern
+     * @return regexList - array of string values
+     */
+    private static List<String> getRegexList(String input, String pattern) {
+        List<String> regexList = new ArrayList<>();
+
+        Pattern patternTag = Pattern.compile(pattern);
+        Matcher matcherTag = patternTag.matcher(input);
+        while (matcherTag.find()) {
+            regexList.add(input.substring(matcherTag.start(), matcherTag.end()));
+        }
+        return regexList;
     }
 }
